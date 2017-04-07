@@ -594,34 +594,67 @@ query_source_images() {
       done
     done
   else
-    # check to see if a filter pattern was provided
-    if [ -z "${V1_REPO_FILTER}" ]
-    then
-      # no filter pattern was defined, get all repos
-      REPO_LIST=$(curl ${V1_OPTIONS} -sf ${V1_PROTO}://${AUTH_CREDS}@${V1_REGISTRY}/v1/search?q= | jq -r '.results | .[] | .name') || catch_error "curl => API failure"
-    else
-      # filter pattern defined, use grep to match repos w/regex capabilites
-      REPO_LIST=$(curl ${V1_OPTIONS} -sf ${V1_PROTO}://${AUTH_CREDS}@${V1_REGISTRY}/v1/search?q= | jq -r '.results | .[] | .name' | grep ${V1_REPO_FILTER} || true) || catch_error "curl => API failure"
-    fi
+    if $V1_TO_V2
+		then
+			# check to see if a filter pattern was provided
+			if [ -z "${V1_REPO_FILTER}" ]
+			then
+				# no filter pattern was defined, get all repos
+				REPO_LIST=$(curl ${V1_OPTIONS} -sf ${V1_PROTO}://${AUTH_CREDS}@${V1_REGISTRY}/v1/search?q= | jq -r '.results | .[] | .name') || catch_error "curl => API failure"
+			else
+				# filter pattern defined, use grep to match repos w/regex capabilites
+				REPO_LIST=$(curl ${V1_OPTIONS} -sf ${V1_PROTO}://${AUTH_CREDS}@${V1_REGISTRY}/v1/search?q= | jq -r '.results | .[] | .name' | grep ${V1_REPO_FILTER} || true) || catch_error "curl => API failure"
+			fi
 
-    # loop through all repos in v1 registry to get tags for each
-    for i in ${REPO_LIST}
-    do
-      # get list of tags for image i
-      IMAGE_TAGS=$(curl ${V1_OPTIONS} -sf ${V1_PROTO}://${AUTH_CREDS}@${V1_REGISTRY}/v1/repositories/${i}/tags | jq -r 'keys | .[]') || catch_error "curl => API failure"
+			 # loop through all repos in v1 registry to get tags for each
+		  for i in ${REPO_LIST}
+			do
+				# get list of tags for image i
+				IMAGE_TAGS=$(curl ${V1_OPTIONS} -sf ${V1_PROTO}://${AUTH_CREDS}@${V1_REGISTRY}/v1/repositories/${i}/tags | jq -r 'keys | .[]') || catch_error "curl => API failure"
 
-      # retrieve a list of tags at the target repository
-      TAGS_AT_TARGET=$(query_tags_to_skip ${i})
+		    # retrieve a list of tags at the target repository
+				TAGS_AT_TARGET=$(query_tags_to_skip ${i})
 
 
-      # loop through tags to create list of full image names w/tags
-      for j in ${IMAGE_TAGS}
-      do
-        i=$(strip_library $i)
-        filter_tags
-      done
-    done
-  fi
+					# loop through tags to create list of full image names w/tags
+					for j in ${IMAGE_TAGS}
+						do
+							i=$(strip_library $i)
+							filter_tags
+						done
+			done
+		else
+			# migration from V2 to V2
+			# check to see if a filter pattern was provided
+			if [ -z "${V1_REPO_FILTER}" ]
+			then
+				# no filter pattern was defined, get all repos
+				REPO_LIST=$(curl ${V1_OPTIONS} -sf ${V1_PROTO}://${AUTH_CREDS}@${V1_REGISTRY}/v2/_catalog | jq -r '.repositories | .[] ') || catch_error "curl => API failure"
+			else
+				# filter pattern defined, use grep to match repos w/regex capabilites
+				REPO_LIST=$(curl ${V1_OPTIONS} -sf ${V1_PROTO}://${AUTH_CREDS}@${V1_REGISTRY}/v2/_catalog | jq -r '.repositories | .[] ' | grep ${V1_REPO_FILTER} || true) || catch_error "curl => API failure"
+			fi
+
+			 # loop through all repos in v1 registry to get tags for each
+		  for i in ${REPO_LIST}
+			do
+				# get list of tags for image i
+				IMAGE_TAGS=$(curl ${V1_OPTIONS} -sf ${V1_PROTO}://${AUTH_CREDS}@${V1_REGISTRY}/v2/$i/tags/list | jq -r '[.tags[]] | .[]') || catch_error "curl => API failure"
+
+		    # retrieve a list of tags at the target repository
+				TAGS_AT_TARGET=$(query_tags_to_skip ${i})
+
+
+					# loop through tags to create list of full image names w/tags
+					for j in ${IMAGE_TAGS}
+						do
+							i=$(strip_library $i)
+							filter_tags
+						done
+			done
+
+		fi
+	fi
   echo -e "${OK} Successfully retrieved list of Docker images from ${V1_REGISTRY}"
 }
 
